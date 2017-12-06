@@ -37,24 +37,24 @@ tf.app.flags.DEFINE_integer('save-model-frequency', 100,
 tf.app.flags.DEFINE_string('log-dir', '{cwd}/logs/'.format(cwd=os.getcwd()),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 # Optimisation hyperparameters
-tf.app.flags.DEFINE_integer('max-steps', 10000,
+tf.app.flags.DEFINE_integer('max-steps', 1000,
                             'Number of mini-batches to train on. (default: %(default)d)')
-tf.app.flags.DEFINE_integer('batch-size', 128, 'Number of examples per mini-batch. (default: %(default)d)')
-tf.app.flags.DEFINE_float('learning-rate', 1e-3, 'Number of examples to run. (default: %(default)d)')
+tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batch. (default: %(default)d)')
+tf.app.flags.DEFINE_float('learning-rate', 1e-4, 'Number of examples to run. (default: %(default)d)')
 
 
 # fgsm_eps = 0.05
-# adversarial_training_enabled = True
+adversarial_training_enabled = False
 run_log_dir = os.path.join(FLAGS.log_dir,
-                           ('exp_bs_{bs}_lr_{lr}_' + ('adv_trained' if adversarial_training_enabled else '') + 'eps_{eps}')
-                           .format(bs=FLAGS.batch_size, lr=FLAGS.learning_rate, eps=fgsm_eps))
+                           ('exp_bs_{bs}_lr_{lr}_' + ('adv_trained' if adversarial_training_enabled else ''))
+                           .format(bs=FLAGS.batch_size, lr=FLAGS.learning_rate))
 checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
 
 # limit the process memory to a third of the total gpu memory
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.33)
 
 def batch_generator(dataset, group, batch_size=100):
-
+    print("called")
     idx = 0
     dataset_size = dataset['y_{0:s}'.format(group)].shape[0]
     indices = range(dataset_size)
@@ -67,57 +67,84 @@ def batch_generator(dataset, group, batch_size=100):
         yield dataset['X_{0:s}'.format(group)][chunk], dataset['y_{0:s}'.format(group)][chunk]
 
 
-# def deepnn(x_image, class_count=10):
-#     """deepnn builds the graph for a deep net for classifying CIFAR10 images.
+def deepnn(x_image, class_count=43):
+    """deepnn builds the graph for a deep net for classifying CIFAR10 images.
 
-#     Args:
-#         x_image: an input tensor whose ``shape[1:] = img_space``
-#             (i.e. a batch of images conforming to the shape specified in ``img_shape``)
-#         class_count: number of classes in dataset
+    Args:
+        x_image: an input tensor whose ``shape[1:] = img_space``
+            (i.e. a batch of images conforming to the shape specified in ``img_shape``)
+        class_count: number of classes in dataset
 
-#     Returns: A tensor of shape (N_examples, 10), with values equal to the logits of
-#       classifying the object images into one of 10 classes
-#       (airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck)
-#     """
+    Returns: A tensor of shape (N_examples, 43), with values equal to the logits of
+      classifying the object images into one of 43 classes
+      ()
+    """
 
-#     # First convolutional layer - maps one RGB image to 32 feature maps.
-#     conv1 = tf.layers.conv2d(
-#         inputs=x_image,
-#         filters=32,
-#         kernel_size=[5, 5],
-#         padding='same',
-#         use_bias=False,
-#         name='conv1'
-#     )
-#     conv1_bn = tf.nn.relu(tf.layers.batch_normalization(conv1, name='conv1_bn'))
-#     pool1 = tf.layers.max_pooling2d(
-#         inputs=conv1_bn,
-#         pool_size=[2, 2],
-#         strides=2,
-#         name='pool1'
-#     )
+    # First convolutional layer - maps one RGB image to 32 feature maps.
+    padded_input = tf.pad(x_image, [[0, 0],[2, 2], [2, 2], [0, 0]], "CONSTANT")
+    conv1 = tf.layers.conv2d(
+        inputs=padded_input,
+        filters=32,
+        kernel_size=[5, 5],
+        padding='valid',
+        activation=tf.nn.relu,
+        use_bias=False,
+        name='conv1'
+    )
+    conv1_bn = tf.nn.relu(tf.layers.batch_normalization(conv1, name='conv1_bn'))
+    pool1 = tf.layers.average_pooling2d(
+        inputs=tf.pad(conv1_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
+        pool_size=[3, 3],
+        strides=2,
+        name='pool1'
+    )
 
-#     conv2 = tf.layers.conv2d(
-#         inputs=pool1,
-#         filters=64,
-#         kernel_size=[5, 5],
-#         padding='same',
-#         activation=tf.nn.relu,
-#         use_bias=False,
-#         name='conv2'
-#     )
-#     conv2_bn = tf.nn.relu(tf.layers.batch_normalization(conv2, name='conv2_bn'))
-#     pool2 = tf.layers.max_pooling2d(
-#         inputs=conv2_bn,
-#         pool_size=[2, 2],
-#         strides=2,
-#         name='pool2'
-#     )
-#     pool2_flat = tf.reshape(pool2, [-1, 8 * 8 * 64], name='pool2_flattened')
-
-#     fc1 = tf.layers.dense(inputs=pool2_flat, activation=tf.nn.relu, units=1024, name='fc1')
-#     logits = tf.layers.dense(inputs=fc1, units=class_count, name='fc2')
-#     return logits
+    conv2 = tf.layers.conv2d(
+        inputs=tf.pad(pool1,[[0, 0], [2, 2], [2, 2], [0, 0]], "CONSTANT"),
+        filters=32,
+        kernel_size=[5, 5],
+        padding='valid',
+        activation=tf.nn.relu,
+        use_bias=False,
+        name='conv2'
+    )
+    conv2_bn = tf.nn.relu(tf.layers.batch_normalization(conv2, name='conv2_bn'))
+    pool2 = tf.layers.average_pooling2d(
+        inputs=tf.pad(conv2_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
+        pool_size=[3, 3],
+        strides=2,
+        name='pool2'
+    )
+    conv3 = tf.layers.conv2d(
+        inputs=tf.pad(pool2,[[0, 0], [2, 2], [2, 2], [0, 0]], "CONSTANT"),
+        filters=64,
+        kernel_size=[5, 5],
+        padding='valid',
+        activation=tf.nn.relu,
+        use_bias=False,
+        name='conv3'
+    )
+    conv3_bn = tf.nn.relu(tf.layers.batch_normalization(conv3, name='conv3_bn'))
+    pool3 = tf.layers.max_pooling2d(
+        inputs=tf.pad(conv3_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
+        pool_size=[3, 3],
+        strides=2,
+        name='pool3'
+    )
+    conv4 = tf.layers.conv2d(
+        inputs=pool3,
+        filters=64,
+        kernel_size=[4, 4],
+        padding='valid',
+        activation=tf.nn.relu,
+        use_bias=False,
+        name='conv4'
+    )
+    conv4_bn = tf.nn.relu(tf.layers.batch_normalization(conv4, name='conv4_bn'))
+    
+    logits = tf.layers.dense(inputs=conv4_bn, units=43, name='fc1')
+    logits = tf.reshape(logits, [-1,43], name='logits')
+    return logits
 
 
 def main(_):
@@ -127,39 +154,42 @@ def main(_):
     # cifar.preprocess()  # necessary for adversarial attack to work well.
     # print("(min, max) = ({}, {})".format(np.min(cifar.trainData), np.max(cifar.trainData)))
 
-    # # Build the graph for the deep net
-    # with tf.name_scope('inputs'):
-    #     x = tf.placeholder(tf.float32, shape=[None, cifar.IMG_WIDTH * cifar.IMG_HEIGHT * cifar.IMG_CHANNELS])
-    #     x_image = tf.reshape(x, [-1, cifar.IMG_WIDTH, cifar.IMG_HEIGHT, cifar.IMG_CHANNELS])
-    #     y_ = tf.placeholder(tf.float32, shape=[None, cifar.CLASS_COUNT])
+    # Build the graph for the deep net
+    with tf.name_scope('inputs'):
+        x = tf.placeholder(tf.float32, shape=[None, 32 * 32 * 3])
+        x_image = tf.reshape(x, [-1, 32, 32, 3])
+        y_ = tf.placeholder(tf.float32, shape=[None, 43])
 
     with tf.variable_scope('model'):
-    #     logits = deepnn(x_image)
-    #     model = CallableModelWrapper(deepnn, 'logits')
-    #     cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
+        logits = deepnn(x_image)
+        print("logits:{}".format(logits.shape))
+        model = CallableModelWrapper(deepnn, 'logits')
+        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
 
-    #     correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(y_, 1))
-    #     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
+        correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(y_, 1))
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
 
-    #     decay_steps = 1000  # decay the learning rate every 1000 steps
-    #     decay_rate = 0.8  # the base of our exponential for the decay
-    #     global_step = tf.Variable(0, trainable=False)  # this will be incremented automatically by tensorflow
-    #     decayed_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, global_step,
-    #                                                        decay_steps, decay_rate, staircase=True)
-         train_step = tf.train.GradientDescentOptimizer(0.0001).minimize(cross_entropy, global_step=global_step)
+        decay_steps = 1000  # decay the learning rate every 1000 steps
+        decay_rate = 0.9  # the base of our exponential for the decay
+        global_step = tf.Variable(0, trainable=False)  # this will be incremented automatically by tensorflow
+        decayed_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, global_step,
+                                                           decay_steps, decay_rate, staircase=True)
+        train_step = tf.train.MomentumOptimizer(FLAGS.learning_rate, 0.9).minimize(cross_entropy, global_step=global_step)
 
-    # loss_summary = tf.summary.scalar("Loss", cross_entropy)
-    # accuracy_summary = tf.summary.scalar("Accuracy", accuracy)
-    # learning_rate_summary = tf.summary.scalar("Learning Rate", decayed_learning_rate)
-    # img_summary = tf.summary.image('Input Images', x_image)
+    loss_summary = tf.summary.scalar("Loss", cross_entropy)
+    accuracy_summary = tf.summary.scalar("Accuracy", accuracy)
+    learning_rate_summary = tf.summary.scalar("Learning Rate", decayed_learning_rate)
+    img_summary = tf.summary.image('Input Images', x_image)
     # test_img_summary = tf.summary.image('Test Images', x_image)
 
-    # train_summary = tf.summary.merge([loss_summary, accuracy_summary, learning_rate_summary, img_summary])
-    # validation_summary = tf.summary.merge([loss_summary, accuracy_summary])
+    train_summary = tf.summary.merge([accuracy_summary, img_summary])
+    validation_summary = tf.summary.merge([loss_summary, accuracy_summary])
 
-    # saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
+    saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
+
+
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
-    #     sess.run(tf.global_variables_initializer())
+        sess.run(tf.global_variables_initializer())
     #     with tf.variable_scope('model', reuse=True):
     #         fgsm = FastGradientMethod(model, sess=sess)
     #         x_adv = fgsm.generate(x_image, eps=fgsm_eps, clip_min=0.0, clip_max=1.0)
@@ -167,24 +197,40 @@ def main(_):
     #     adversarial_summary = tf.summary.image('Adversarial Images', x_image)
 
 
-    #     train_writer = tf.summary.FileWriter(run_log_dir + "_train", sess.graph)
-    #     validation_writer = tf.summary.FileWriter(run_log_dir + "_validation", sess.graph)
+        train_writer = tf.summary.FileWriter(run_log_dir + "_train", sess.graph)
+        validation_writer = tf.summary.FileWriter(run_log_dir + "_validation", sess.graph)
     #     adversarial_writer = tf.summary.FileWriter(run_log_dir + "_adversarial", sess.graph)
     #     test_writer = tf.summary.FileWriter(run_log_dir + "_test", sess.graph)
 
-    #     sess.run(tf.global_variables_initializer())
-
+        sess.run(tf.global_variables_initializer())
+        print ("Made graph!")
         # Training and validation
+        # for step in range(0, FLAGS.max_steps, 1):
+        #     i = 1
+        step = 0
+        
         for (train_images, train_labels) in batch_generator(data, 'train'):
-            i = 1
-            i = i + 1
-        print(i)
+            print("train:{}".format(step))
+            step = step + 1
+            _, train_summary_str = sess.run([train_step, train_summary], feed_dict={x_image: train_images, y_: train_labels})
 
+        step = 0
         for (test_images, test_labels) in batch_generator(data, 'test'):
-            k = 1
-            k = k + 1
-        print(k)
+            if step % FLAGS.log_frequency == 0:
+                train_writer.add_summary(train_summary_str, step)
+                validation_accuracy, validation_summary_str = sess.run([accuracy, validation_summary],
+                                                                       feed_dict={x_image: test_images, y_: test_labels})
+                print('step {}, accuracy on validation set : {}'.format(step, validation_accuracy))
+                validation_writer.add_summary(validation_summary_str, step)
+            # Save the model checkpoint periodically.
+            if step % FLAGS.save_model_frequency == 0 or (step + 1) == FLAGS.max_steps:
+                saver.save(sess, checkpoint_path, global_step=step)
 
+            if step % FLAGS.flush_frequency == 0:
+                train_writer.flush()
+                validation_writer.flush()
+            step = step + 1
+       
     #     # Resetting the internal batch indexes]
 
     #     cifar.reset()
