@@ -1,15 +1,12 @@
 ############################################################
 #                                                          #
-#  Code for Lab 2: Intro to TensorFlow and Blue Crystal 4  #
+#  Code for Traffic-sign-recognition coursework            #
+#  Based on the "A Shallow Network with Combined Pooling   #
+#  for Fast Traffic Sign Recognition" paper by Jianming    #
+#  Zhang, Qianqian Huang , Honglin Wu and Yukai Liu.       #
 #                                                          #
 ############################################################
-
-"""Based on TensorFLow's tutorial: A deep MNIST classifier using convolutional layers.
-
-See extensive documentation at
-https://www.tensorflow.org/get_started/mnist/pros
-"""
-
+from __future__ import absolute_import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -19,6 +16,8 @@ import os
 
 import numpy as np
 import tensorflow as tf
+
+from gtsrb import *
 from cleverhans.attacks import FastGradientMethod
 from cleverhans.model import CallableModelWrapper
 
@@ -40,7 +39,7 @@ tf.app.flags.DEFINE_string('log-dir', '{cwd}/logs/'.format(cwd=os.getcwd()),
 tf.app.flags.DEFINE_integer('max-steps', 1000,
                             'Number of mini-batches to train on. (default: %(default)d)')
 tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batch. (default: %(default)d)')
-tf.app.flags.DEFINE_float('learning-rate', 1e-4, 'Number of examples to run. (default: %(default)d)')
+tf.app.flags.DEFINE_float('learning-rate', 1e-2, 'Number of examples to run. (default: %(default)d)') ##this was found in paper [25] :test is between 1e-1 to 1e-3 
 
 
 # fgsm_eps = 0.05
@@ -53,34 +52,14 @@ checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
 # limit the process memory to a third of the total gpu memory
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.33)
 
-def batch_generator(dataset, group, batch_size=100):
-    print("called")
-    idx = 0
-    dataset_size = dataset['y_{0:s}'.format(group)].shape[0]
-    indices = range(dataset_size)
-    np.random.shuffle(indices)
-    while idx < dataset_size:
-        chunk = slice(idx, idx+batch_size)
-        chunk = indices[chunk]
-        chunk = sorted(chunk)
-        idx = idx + batch_size
-        yield dataset['X_{0:s}'.format(group)][chunk], dataset['y_{0:s}'.format(group)][chunk]
+
+#shape = [filter_height, filter_width, in_channels, out_channels]
+def weight_initialization(shape, w= 0.0625) :#because range is [-0.05; 0.05] from the paper
+    initial = tf.random_normal(shape, mean= 0.0, stddev=w)
+    return tf.Variable(initial)
 
 
 def deepnn(x_image, class_count=43):
-    """deepnn builds the graph for a deep net for classifying CIFAR10 images.
-
-    Args:
-        x_image: an input tensor whose ``shape[1:] = img_space``
-            (i.e. a batch of images conforming to the shape specified in ``img_shape``)
-        class_count: number of classes in dataset
-
-    Returns: A tensor of shape (N_examples, 43), with values equal to the logits of
-      classifying the object images into one of 43 classes
-      ()
-    """
-
-    # First convolutional layer - maps one RGB image to 32 feature maps.
     padded_input = tf.pad(x_image, [[0, 0],[2, 2], [2, 2], [0, 0]], "CONSTANT")
     conv1 = tf.layers.conv2d(
         inputs=padded_input,
@@ -91,6 +70,8 @@ def deepnn(x_image, class_count=43):
         use_bias=False,
         name='conv1'
     )
+
+    #conv1_weights = weight_initialization([5, 5, 32, 32])
     conv1_bn = tf.nn.relu(tf.layers.batch_normalization(conv1, name='conv1_bn'))
     pool1 = tf.layers.average_pooling2d(
         inputs=tf.pad(conv1_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
@@ -102,12 +83,13 @@ def deepnn(x_image, class_count=43):
     conv2 = tf.layers.conv2d(
         inputs=tf.pad(pool1,[[0, 0], [2, 2], [2, 2], [0, 0]], "CONSTANT"),
         filters=32,
-        kernel_size=[5, 5],
+        kernel_size=[5, 5], 
         padding='valid',
         activation=tf.nn.relu,
         use_bias=False,
         name='conv2'
     )
+    #conv2_weights = weight_initialization([5, 5, 32, 32])
     conv2_bn = tf.nn.relu(tf.layers.batch_normalization(conv2, name='conv2_bn'))
     pool2 = tf.layers.average_pooling2d(
         inputs=tf.pad(conv2_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
@@ -115,6 +97,7 @@ def deepnn(x_image, class_count=43):
         strides=2,
         name='pool2'
     )
+
     conv3 = tf.layers.conv2d(
         inputs=tf.pad(pool2,[[0, 0], [2, 2], [2, 2], [0, 0]], "CONSTANT"),
         filters=64,
@@ -124,6 +107,8 @@ def deepnn(x_image, class_count=43):
         use_bias=False,
         name='conv3'
     )
+
+    #conv3_weights = weight_initialization([5, 5, 64, 64])
     conv3_bn = tf.nn.relu(tf.layers.batch_normalization(conv3, name='conv3_bn'))
     pool3 = tf.layers.max_pooling2d(
         inputs=tf.pad(conv3_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
@@ -140,24 +125,36 @@ def deepnn(x_image, class_count=43):
         use_bias=False,
         name='conv4'
     )
+
+    #conv4_weights = weight_initialization([4, 4, 64, 64])
     conv4_bn = tf.nn.relu(tf.layers.batch_normalization(conv4, name='conv4_bn'))
     
-    logits = tf.layers.dense(inputs=conv4_bn, units=43, name='fc1')
-    logits = tf.reshape(logits, [-1,43], name='logits')
+    logits = tf.layers.dense(inputs=conv4_bn, units=class_count, name='fc1')
+    logits = tf.reshape(logits, [-1,class_count], name='logits')
     return logits
+
+
+##preprocessing the data channel by channel
+def preprocess(images, channels=3):
+    print('preprocessing')
+    print(images.shape())
+    for i in range(0,3) :
+        mean_channel = mean(images[:, :, i])
+        stddev_channel = std(images[:, :, i])
+        images[:, :, i] = (images[:, :, i]  - mean_channel) / stddev_channel
+    return images
 
 
 def main(_):
     tf.reset_default_graph()
 
     data = np.load('gtsrb_dataset.npz')
-    # cifar.preprocess()  # necessary for adversarial attack to work well.
-    # print("(min, max) = ({}, {})".format(np.min(cifar.trainData), np.max(cifar.trainData)))
+    ##data = preprocess(data) -->  not sure how i am going to be doing that
 
     # Build the graph for the deep net
     with tf.name_scope('inputs'):
         x = tf.placeholder(tf.float32, shape=[None, 32 * 32 * 3])
-        x_image = tf.reshape(x, [-1, 32, 32, 3])
+        x_image= tf.reshape(x, [-1, 32, 32, 3])
         y_ = tf.placeholder(tf.float32, shape=[None, 43])
 
     with tf.variable_scope('model'):
@@ -172,6 +169,10 @@ def main(_):
         decay_steps = 1000  # decay the learning rate every 1000 steps
         decay_rate = 0.9  # the base of our exponential for the decay
         global_step = tf.Variable(0, trainable=False)  # this will be incremented automatically by tensorflow
+        
+        ##variables that are defined in the paper -- not sure of the shape that the weights should be taking
+        weights = tf.Variable(tf.random_normal([32, 32], mean = 0.0, stddev = 0.05), name='weights')
+
         decayed_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, global_step,
                                                            decay_steps, decay_rate, staircase=True)
         train_step = tf.train.MomentumOptimizer(FLAGS.learning_rate, 0.9).minimize(cross_entropy, global_step=global_step)
@@ -190,27 +191,18 @@ def main(_):
 
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         sess.run(tf.global_variables_initializer())
-    #     with tf.variable_scope('model', reuse=True):
-    #         fgsm = FastGradientMethod(model, sess=sess)
-    #         x_adv = fgsm.generate(x_image, eps=fgsm_eps, clip_min=0.0, clip_max=1.0)
-           
-    #     adversarial_summary = tf.summary.image('Adversarial Images', x_image)
 
-
+        #declare writers
         train_writer = tf.summary.FileWriter(run_log_dir + "_train", sess.graph)
         validation_writer = tf.summary.FileWriter(run_log_dir + "_validation", sess.graph)
-    #     adversarial_writer = tf.summary.FileWriter(run_log_dir + "_adversarial", sess.graph)
-    #     test_writer = tf.summary.FileWriter(run_log_dir + "_test", sess.graph)
 
+        #initialize the variables
         sess.run(tf.global_variables_initializer())
-        print ("Made graph!")
-        # Training and validation
-        # for step in range(0, FLAGS.max_steps, 1):
-        #     i = 1
         step = 0
         
         for (train_images, train_labels) in batch_generator(data, 'train'):
             print("train:{}".format(step))
+
             step = step + 1
             _, train_summary_str = sess.run([train_step, train_summary], feed_dict={x_image: train_images, y_: train_labels})
 
