@@ -26,7 +26,7 @@ sys.path.append(here)
 
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_integer('log-frequency', 10,
+tf.app.flags.DEFINE_integer('log-frequency', 100,
                             'Number of steps between logging results to the console and saving summaries.' +
                             ' (default: %(default)d)')
 tf.app.flags.DEFINE_integer('flush-frequency', 50,
@@ -224,9 +224,30 @@ def main(_):
                 train_writer.flush()
                 test_writer.flush()
 
-        test_accuracy = test_accuracy / step
+        gtsrb.reset()
+        evaluated_images = 0
+        test_accuracy = 0
+        #adversarial_test_accuracy = 0
+        batch_count = 0
+
+        while evaluated_images != gtsrb.nTestSamples:
+            # Don't loop back when we reach the end of the test set
+            (test_images, test_labels) = gtsrb.getTestBatch(allowSmallerBatches=True)
+            test_accuracy_temp = sess.run(accuracy, feed_dict={x: test_images, y_: test_labels})
+            test_accuracy += test_accuracy_temp
+            
+            test_summay_str = sess.run(img_summary, feed_dict={x: test_images})
+            test_writer.add_summary(test_summay_str, evaluated_images)
+
+            batch_count += 1
+            evaluated_images += test_labels.shape[0]
+
+        test_accuracy = test_accuracy / batch_count
         print('test set: accuracy on test set: %0.3f' % test_accuracy)
-        #print("reached end of test batch")
+        print('model saved to ' + checkpoint_path)
+
+        train_writer.close()
+        test_writer.close()
        
    
 if __name__ == '__main__':
