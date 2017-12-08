@@ -128,9 +128,9 @@ def deepnn(x_image, class_count=43):
 
     #conv4_weights = weight_initialization([4, 4, 64, 64])
     conv4_bn = tf.nn.relu(tf.layers.batch_normalization(conv4, name='conv4_bn'))
-    
-    logits = tf.layers.dense(inputs=conv4_bn, units=class_count, name='fc1')
-    logits = tf.reshape(logits, [-1,class_count], name='logits')
+    fc1 = tf.contrib.layers.flatten(conv4_bn)
+    logits = tf.layers.dense(inputs=fc1, units=class_count, name='fc1')
+    #logits = tf.reshape(logits, [-1,class_count], name='logits')
     return logits
 
 
@@ -194,7 +194,8 @@ def main(_):
 
         #declare writers
         train_writer = tf.summary.FileWriter(run_log_dir + "_train", sess.graph)
-        validation_writer = tf.summary.FileWriter(run_log_dir + "_validation", sess.graph)
+        #validation_writer = tf.summary.FileWriter(run_log_dir + "_validation", sess.graph)
+        test_writer = tf.summary.FileWriter(run_log_dir + "_test", sess.graph)
 
         #initialize the variables
         sess.run(tf.global_variables_initializer())
@@ -202,69 +203,39 @@ def main(_):
         
         for (train_images, train_labels) in batch_generator(data, 'train'):
             print("train:{}".format(step))
-
+            #print(train_images.shape)
             step = step + 1
             _, train_summary_str = sess.run([train_step, train_summary], feed_dict={x_image: train_images, y_: train_labels})
 
         step = 0
+        test_accuracy = 0
         for (test_images, test_labels) in batch_generator(data, 'test'):
             if step % FLAGS.log_frequency == 0:
                 train_writer.add_summary(train_summary_str, step)
-                validation_accuracy, validation_summary_str = sess.run([accuracy, validation_summary],
-                                                                       feed_dict={x_image: test_images, y_: test_labels})
-                print('step {}, accuracy on validation set : {}'.format(step, validation_accuracy))
-                validation_writer.add_summary(validation_summary_str, step)
+                test_accuracy_temp = sess.run(accuracy, feed_dict={x_image: test_images, y_: test_labels})
+                print('step {}, accuracy on test set : {}'.format(step, test_accuracy_temp))
+                test_accuracy += test_accuracy_temp
+                test_summay_str = sess.run(img_summary, feed_dict={x_image: test_images})
+                test_writer.add_summary(test_summay_str)
+                #validation_writer.add_summary(validation_summary_str, step)
+            #else:
+            #    print("reached log freq")
             # Save the model checkpoint periodically.
             if step % FLAGS.save_model_frequency == 0 or (step + 1) == FLAGS.max_steps:
                 saver.save(sess, checkpoint_path, global_step=step)
+            #else: 
+            #    print("reached model save freq")
 
             if step % FLAGS.flush_frequency == 0:
                 train_writer.flush()
-                validation_writer.flush()
+                test_writer.flush()
+            #else:
+            #    print("reached flush freq")
             step = step + 1
+        test_accuracy = test_accuracy/step
+        print('test set: accuracy on test set: %0.3f' % test_accuracy)
+        #print("reached end of test batch")
        
-    #     # Resetting the internal batch indexes]
-
-    #     cifar.reset()
-    #     evaluated_images = 0
-    #     test_accuracy = 0
-    #     adversarial_test_accuracy = 0
-    #     batch_count = 0
-
-    #     while evaluated_images != cifar.nTestSamples:
-    #         # Don't loop back when we reach the end of the test set
-    #         (test_images, test_labels) = cifar.getTestBatch(allowSmallerBatches=True)
-    #         test_accuracy_temp = sess.run(accuracy, feed_dict={x: test_images, y_: test_labels})
-    #         test_accuracy += test_accuracy_temp
-            
-
-    #         #adv_images = sess.run(x_adv, feed_dict={x: test_images, y_: test_labels})
-    #         adv_images = sess.run(x_adv, feed_dict={x: test_images})
-    #         x_adv_np = np.reshape(adv_images, [-1, cifar.IMG_WIDTH*cifar.IMG_HEIGHT*cifar.IMG_CHANNELS])
-
-    #         adv_accuracy_temp = sess.run(accuracy, feed_dict={x: x_adv_np, y_: test_labels})
-    #         adversarial_test_accuracy += adv_accuracy_temp
-
-    #         adversarial_summary_str = sess.run(adversarial_summary, feed_dict={x: x_adv_np})
-    #         adversarial_writer.add_summary(adversarial_summary_str, evaluated_images)
-
-    #         test_summay_str = sess.run(img_summary, feed_dict={x: test_images})
-    #         test_writer.add_summary(test_summay_str, evaluated_images)
-
-    #         batch_count += 1
-    #         evaluated_images += test_labels.shape[0]
-
-    #     test_accuracy = test_accuracy / batch_count
-    #     adversarial_test_accuracy = adversarial_test_accuracy / batch_count
-    #     print('test set: accuracy on test set: %0.3f' % test_accuracy)
-    #     print('adversarial test set: accuracy on adversarial test set: %0.3f' % adversarial_test_accuracy)
-    #     print('model saved to ' + checkpoint_path)
-
-    #     train_writer.close()
-    #     validation_writer.close()
-    #     adversarial_writer.close()
-    #     test_writer.close()
-
-
+   
 if __name__ == '__main__':
     tf.app.run(main=main)
