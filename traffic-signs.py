@@ -17,7 +17,7 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from gtsrb import *
+import gtsrb as gb
 from cleverhans.attacks import FastGradientMethod
 from cleverhans.model import CallableModelWrapper
 
@@ -36,7 +36,7 @@ tf.app.flags.DEFINE_integer('save-model-frequency', 100,
 tf.app.flags.DEFINE_string('log-dir', '{cwd}/logs/'.format(cwd=os.getcwd()),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 # Optimisation hyperparameters
-tf.app.flags.DEFINE_integer('max-steps', 1000,
+tf.app.flags.DEFINE_integer('max-steps', 10000,
                             'Number of mini-batches to train on. (default: %(default)d)')
 tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batch. (default: %(default)d)')
 tf.app.flags.DEFINE_float('learning-rate', 1e-2, 'Number of examples to run. (default: %(default)d)') ##this was found in paper [25] :test is between 1e-1 to 1e-3 
@@ -148,7 +148,8 @@ def preprocess(images, channels=3):
 def main(_):
     tf.reset_default_graph()
 
-    data = np.load('gtsrb_dataset.npz')
+    gtsrb = gb.gtsrb(batchSize = FLAGS.batch_size)
+    #data = np.load('gtsrb_dataset.npz')
     ##data = preprocess(data) -->  not sure how i am going to be doing that
 
     # Build the graph for the deep net
@@ -199,40 +200,31 @@ def main(_):
 
         #initialize the variables
         sess.run(tf.global_variables_initializer())
-        step = 0
-        
-        for (train_images, train_labels) in batch_generator(data, 'train'):
-            print("train:{}".format(step))
-            #print(train_images.shape)
-            step = step + 1
-            _, train_summary_str = sess.run([train_step, train_summary], feed_dict={x_image: train_images, y_: train_labels})
-
-        step = 0
+        #step = 0
         test_accuracy = 0
-        for (test_images, test_labels) in batch_generator(data, 'test'):
+        for step in range(0, FLAGS.max_steps, 1):
+            (train_images, train_labels) = gtsrb.getTrainBatch()
+            (test_images, test_labels)   = gtsrb.getTestBatch()
+            #print("train:{}".format(step))
+
+            _, train_summary_str = sess.run([train_step, train_summary], feed_dict={x: train_images, y_: train_labels})
+
             if step % FLAGS.log_frequency == 0:
                 train_writer.add_summary(train_summary_str, step)
-                test_accuracy_temp = sess.run(accuracy, feed_dict={x_image: test_images, y_: test_labels})
+                test_accuracy_temp = sess.run(accuracy, feed_dict={x: test_images, y_: test_labels})
                 print('step {}, accuracy on test set : {}'.format(step, test_accuracy_temp))
                 test_accuracy += test_accuracy_temp
-                test_summay_str = sess.run(img_summary, feed_dict={x_image: test_images})
+                test_summay_str = sess.run(img_summary, feed_dict={x: test_images})
                 test_writer.add_summary(test_summay_str)
-                #validation_writer.add_summary(validation_summary_str, step)
-            #else:
-            #    print("reached log freq")
-            # Save the model checkpoint periodically.
+            
             if step % FLAGS.save_model_frequency == 0 or (step + 1) == FLAGS.max_steps:
                 saver.save(sess, checkpoint_path, global_step=step)
-            #else: 
-            #    print("reached model save freq")
-
+            
             if step % FLAGS.flush_frequency == 0:
                 train_writer.flush()
                 test_writer.flush()
-            #else:
-            #    print("reached flush freq")
-            step = step + 1
-        test_accuracy = test_accuracy/step
+
+        test_accuracy = test_accuracy / step
         print('test set: accuracy on test set: %0.3f' % test_accuracy)
         #print("reached end of test batch")
        
