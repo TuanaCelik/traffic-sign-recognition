@@ -63,7 +63,7 @@ class gtsrb:
         trainData = np.reshape(self.trainData, [-1, 32, 32, 3])
         testData  = np.reshape(self.testData, [-1, 32, 32, 3])
         print(self.trainData.shape)
-        for i in range(0,2) :
+        for i in range(0,3) :
             mean_channel_train = np.mean(trainData[:, :, :, i])
             mean_channel_test = np.mean(testData[:, :, :, i])
             stddev_channel_train = np.std(trainData[:, :, :, i])
