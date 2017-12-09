@@ -1,7 +1,9 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function, unicode_literals
+from __future__ import print_function, unicode_literals, absolute_import
+from __future__ import division
+
 import six.moves.urllib.request as request
 import six
 import os
@@ -54,12 +56,24 @@ class gtsrb:
         self.trainData = self._swapChannelOrdering(self.trainData)
         self.testData = self._swapChannelOrdering(self.testData)
 
-    def preprocess(self):
-        """
-        Convert pixel values to lie within [0, 1]
-        """
-        self.trainData = self._normaliseImages(self.trainData.astype(np.float32, copy=False))
-        self.testData = self._normaliseImages(self.testData.astype(np.float32, copy=False))
+    def preprocess(self, channels=3):
+        print('preprocessing')
+        #print(images.shape())
+        #print(self.trainData.shape)
+        trainData = np.reshape(self.trainData, [-1, 32, 32, 3])
+        testData  = np.reshape(self.testData, [-1, 32, 32, 3])
+        print(self.trainData.shape)
+        for i in range(0,2) :
+            mean_channel_train = np.mean(trainData[:, :, :, i])
+            mean_channel_test = np.mean(testData[:, :, :, i])
+            stddev_channel_train = np.std(trainData[:, :, :, i])
+            stddev_channel_test = np.std(testData[:, :, :, i])
+            trainData[:, :, :, i] = (trainData[:, :,:, i]  - mean_channel_train) / stddev_channel_train
+            testData[:, :, :, i] = (testData[:, :,:, i]  - mean_channel_test) / stddev_channel_test
+        
+        self.trainData = np.reshape(trainData, [-1, 32*32*3])
+        self.testData = np.reshape(testData, [-1, 32*32*3])
+        #return images
 
     def _normaliseImages(self, imgs_flat):
         min = np.min(imgs_flat)

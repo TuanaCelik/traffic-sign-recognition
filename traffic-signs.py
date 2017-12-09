@@ -149,9 +149,7 @@ def main(_):
     tf.reset_default_graph()
 
     gtsrb = gb.gtsrb(batchSize = FLAGS.batch_size)
-    #data = np.load('gtsrb_dataset.npz')
-    ##data = preprocess(data) -->  not sure how i am going to be doing that
-
+    gtsrb.preprocess()
     # Build the graph for the deep net
     with tf.name_scope('inputs'):
         x = tf.placeholder(tf.float32, shape=[None, 32 * 32 * 3])
@@ -160,7 +158,7 @@ def main(_):
 
     with tf.variable_scope('model'):
         logits = deepnn(x_image)
-        print("logits:{}".format(logits.shape))
+        #print("logits:{}".format(logits.shape))
         model = CallableModelWrapper(deepnn, 'logits')
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
 
@@ -182,9 +180,9 @@ def main(_):
     accuracy_summary = tf.summary.scalar("Accuracy", accuracy)
     learning_rate_summary = tf.summary.scalar("Learning Rate", decayed_learning_rate)
     img_summary = tf.summary.image('Input Images', x_image)
-    # test_img_summary = tf.summary.image('Test Images', x_image)
+    test_img_summary = tf.summary.image('Test Images', x_image)
 
-    train_summary = tf.summary.merge([accuracy_summary, img_summary])
+    train_summary = tf.summary.merge([loss_summary, accuracy_summary, learning_rate_summary, img_summary])
     validation_summary = tf.summary.merge([loss_summary, accuracy_summary])
 
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
@@ -195,7 +193,7 @@ def main(_):
 
         #declare writers
         train_writer = tf.summary.FileWriter(run_log_dir + "_train", sess.graph)
-        #validation_writer = tf.summary.FileWriter(run_log_dir + "_validation", sess.graph)
+        validation_writer = tf.summary.FileWriter(run_log_dir + "_validation", sess.graph)
         test_writer = tf.summary.FileWriter(run_log_dir + "_test", sess.graph)
 
         #initialize the variables
@@ -211,18 +209,19 @@ def main(_):
 
             if step % FLAGS.log_frequency == 0:
                 train_writer.add_summary(train_summary_str, step)
-                test_accuracy_temp = sess.run(accuracy, feed_dict={x: test_images, y_: test_labels})
-                print('step {}, accuracy on test set : {}'.format(step, test_accuracy_temp))
-                test_accuracy += test_accuracy_temp
-                test_summay_str = sess.run(img_summary, feed_dict={x: test_images})
-                test_writer.add_summary(test_summay_str)
-            
+                validation_accuracy, validation_summary_str = sess.run([accuracy, validation_summary],
+                                                                       feed_dict={x: test_images, y_: test_labels})
+                print('step {}, accuracy on validation set : {}'.format(step, validation_accuracy))
+                validation_writer.add_summary(validation_summary_str, step)
+
+            # Save the model checkpoint periodically.
             if step % FLAGS.save_model_frequency == 0 or (step + 1) == FLAGS.max_steps:
                 saver.save(sess, checkpoint_path, global_step=step)
-            
+
             if step % FLAGS.flush_frequency == 0:
                 train_writer.flush()
-                test_writer.flush()
+                validation_writer.flush()
+
 
         gtsrb.reset()
         evaluated_images = 0
