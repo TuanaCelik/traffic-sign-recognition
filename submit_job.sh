@@ -10,4 +10,4 @@
 module load libs/tensorflow/1.2
 rm -rf logs
 mkdir logs 
-#python file.py file to run	
+python traffic-signs.py file to run	

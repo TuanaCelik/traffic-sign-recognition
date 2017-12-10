@@ -53,12 +53,6 @@ checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.33)
 
 
-#shape = [filter_height, filter_width, in_channels, out_channels]
-def weight_initialization(shape, w= 0.0625) :#because range is [-0.05; 0.05] from the paper
-    initial = tf.random_normal(shape, mean= 0.0, stddev=w)
-    return tf.Variable(initial)
-
-
 def deepnn(x_image, class_count=43):
     padded_input = tf.pad(x_image, [[0, 0],[2, 2], [2, 2], [0, 0]], "CONSTANT")
     conv1 = tf.layers.conv2d(
@@ -66,12 +60,12 @@ def deepnn(x_image, class_count=43):
         filters=32,
         kernel_size=[5, 5],
         padding='valid',
+        kernel_initializer = tf.random_uniform_initializer(-0.05, 0.05),
         activation=tf.nn.relu,
         use_bias=False,
         name='conv1'
     )
 
-    #conv1_weights = weight_initialization([5, 5, 32, 32])
     conv1_bn = tf.nn.relu(tf.layers.batch_normalization(conv1, name='conv1_bn'))
     pool1 = tf.layers.average_pooling2d(
         inputs=tf.pad(conv1_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
@@ -85,11 +79,11 @@ def deepnn(x_image, class_count=43):
         filters=32,
         kernel_size=[5, 5], 
         padding='valid',
+        kernel_initializer = tf.random_uniform_initializer(-0.05, 0.05),
         activation=tf.nn.relu,
         use_bias=False,
         name='conv2'
     )
-    #conv2_weights = weight_initialization([5, 5, 32, 32])
     conv2_bn = tf.nn.relu(tf.layers.batch_normalization(conv2, name='conv2_bn'))
     pool2 = tf.layers.average_pooling2d(
         inputs=tf.pad(conv2_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
@@ -103,12 +97,12 @@ def deepnn(x_image, class_count=43):
         filters=64,
         kernel_size=[5, 5],
         padding='valid',
+        kernel_initializer = tf.random_uniform_initializer(-0.05, 0.05),
         activation=tf.nn.relu,
         use_bias=False,
         name='conv3'
     )
 
-    #conv3_weights = weight_initialization([5, 5, 64, 64])
     conv3_bn = tf.nn.relu(tf.layers.batch_normalization(conv3, name='conv3_bn'))
     pool3 = tf.layers.max_pooling2d(
         inputs=tf.pad(conv3_bn, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
@@ -121,28 +115,17 @@ def deepnn(x_image, class_count=43):
         filters=64,
         kernel_size=[4, 4],
         padding='valid',
+        kernel_initializer = tf.random_uniform_initializer(-0.05, 0.05),
         activation=tf.nn.relu,
         use_bias=False,
         name='conv4'
     )
 
-    #conv4_weights = weight_initialization([4, 4, 64, 64])
     conv4_bn = tf.nn.relu(tf.layers.batch_normalization(conv4, name='conv4_bn'))
     fc1 = tf.contrib.layers.flatten(conv4_bn)
     logits = tf.layers.dense(inputs=fc1, units=class_count, name='fc1')
-    #logits = tf.reshape(logits, [-1,class_count], name='logits')
     return logits
 
-
-##preprocessing the data channel by channel
-def preprocess(images, channels=3):
-    print('preprocessing')
-    print(images.shape())
-    for i in range(0,3) :
-        mean_channel = mean(images[:, :, i])
-        stddev_channel = std(images[:, :, i])
-        images[:, :, i] = (images[:, :, i]  - mean_channel) / stddev_channel
-    return images
 
 
 def main(_):
@@ -166,12 +149,9 @@ def main(_):
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
 
         decay_steps = 1000  # decay the learning rate every 1000 steps
-        decay_rate = 0.9  # the base of our exponential for the decay
+        decay_rate = 0.0001  # the base of our exponential for the decay
         global_step = tf.Variable(0, trainable=False)  # this will be incremented automatically by tensorflow
         
-        ##variables that are defined in the paper -- not sure of the shape that the weights should be taking
-        weights = tf.Variable(tf.random_normal([32, 32], mean = 0.0, stddev = 0.05), name='weights')
-
         decayed_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, global_step,
                                                            decay_steps, decay_rate, staircase=True)
         train_step = tf.train.MomentumOptimizer(FLAGS.learning_rate, 0.9).minimize(cross_entropy, global_step=global_step)
