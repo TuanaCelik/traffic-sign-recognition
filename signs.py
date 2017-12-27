@@ -117,7 +117,6 @@ def deepnn(x_image, class_count=43):
         kernel_regularizer=regularizer,
         name='conv4'
     )
-
    
     logits = tf.contrib.layers.fully_connected(
             inputs=conv4,
@@ -199,7 +198,8 @@ def main(_):
         sess.run(tf.global_variables_initializer())
         print("Training....")
         for step in range(0, FLAGS.epochs, 1):
-           
+            print("Epoch: {}".format(step))
+
             train_batch_generator = batch_generator(dataset, 'train', batch_size=FLAGS.batch_size)
 
             for (train_images, train_labels) in train_batch_generator:
@@ -220,6 +220,8 @@ def main(_):
 
         for (test_images, test_labels) in test_batch_generator:
             test_accuracy_temp = sess.run(accuracy, feed_dict={x_image: test_images, y_: test_labels})
+            print('Batch {}, accuracy : {}'.format(batch_count, test_accuracy_temp))
+
             test_accuracy += test_accuracy_temp
 
             test_summay_str = sess.run(img_summary, feed_dict={x_image: test_images})
