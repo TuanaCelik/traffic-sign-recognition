@@ -46,7 +46,7 @@ def deepnn(x_image, class_count=43):
     initializer = tf.random_uniform_initializer(-0.05, 0.05)
     regularizer = tf.contrib.layers.l2_regularizer(scale=FLAGS.weight_decay)
     
-    x_image = tf.map_fn(lambda img: preprocess(img), x_image)
+    x_image = tf.map_fn(lambda img: tf.image.per_image_standardization(img), x_image)
 
     padded_input = tf.pad(x_image, [[0, 0],[2, 2], [2, 2], [0, 0]], "CONSTANT")
     conv1 = tf.layers.conv2d(
@@ -128,34 +128,6 @@ def deepnn(x_image, class_count=43):
 
     logits = tf.contrib.layers.flatten(logits)   
     return logits
-
-#If someone can get this pre-processing to work that would be great..
-
-# def preprocess(images, channels=3): 
-#     print('preprocessing') 
-#     #print(images.shape()) 
-#     for i in range(0,3) : 
-#         mean_channel = np.mean(images[:, :, i]) 
-#         stddev_channel = np.std(images[:, :, i]) 
-#         images[:, :, i] = (images[:, :, i]  - mean_channel) / stddev_channel 
-#     return images 
-
-def preprocess(img):
-    img_flat = tf.reshape(img, [-1])
-    chan_r, chan_g, chan_b = tf.split(img_flat, 3, 0)
-
-    mean_r, var_r = tf.nn.moments(chan_r, axes=[0])
-    mean_g, var_g = tf.nn.moments(chan_g, axes=[0])
-    mean_b, var_b = tf.nn.moments(chan_b, axes=[0])
-    
-    chan_r = tf.div(tf.subtract(chan_r, mean_r), tf.sqrt(var_r))
-    chan_g = tf.div(tf.subtract(chan_g, mean_g), tf.sqrt(var_g))
-    chan_b = tf.div(tf.subtract(chan_b, mean_b), tf.sqrt(var_b))
-
-    preprocessed_image_flat = tf.concat([chan_r, chan_g, chan_b], 0)
-    preprocessed_image = tf.reshape(preprocessed_image_flat, [32, 32, 3])
-
-    return preprocessed_image
 
 
 def main(_):
