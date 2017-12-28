@@ -40,20 +40,12 @@ checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.75)
 
 
-
 def deepnn(x_image, class_count=43):
     
     initializer = tf.random_uniform_initializer(-0.05, 0.05)
     regularizer = tf.contrib.layers.l2_regularizer(scale=FLAGS.weight_decay)
     
     x_image = tf.map_fn(lambda img: tf.image.per_image_standardization(img), x_image)
-
-    # type(x_image)
-    # for i in x_image.length :
-    #     pickle.dump(x_image[i], open( "preprocessed.p", "a" ) )
-
-    # pickle.dump(x_image, open( "whitenedImages.p", "wb" ) )
-
 
     padded_input = tf.pad(x_image, [[0, 0],[2, 2], [2, 2], [0, 0]], "CONSTANT")
     conv1 = tf.layers.conv2d(
@@ -149,24 +141,24 @@ def deepnn(x_image, class_count=43):
 #     return images 
  
 
-def preprocess(img):
-    img_flat = tf.reshape(img, [-1]) # Flatten image
-    chan_r, chan_g, chan_b = tf.split(img_flat, 3, 0) # Devide it into three channels
-    # Calculate mean and variance for each channel
-    mean_r, var_r = tf.nn.moments(chan_r, axes=[0])
-    mean_g, var_g = tf.nn.moments(chan_g, axes=[0])
-    mean_b, var_b = tf.nn.moments(chan_b, axes=[0])
+# def preprocess(img):
+#     img_flat = tf.reshape(img, [-1]) # Flatten image
+#     chan_r, chan_g, chan_b = tf.split(img_flat, 3, 0) # Devide it into three channels
+#     # Calculate mean and variance for each channel
+#     mean_r, var_r = tf.nn.moments(chan_r, axes=[0])
+#     mean_g, var_g = tf.nn.moments(chan_g, axes=[0])
+#     mean_b, var_b = tf.nn.moments(chan_b, axes=[0])
     
-    # Substract the mean and devide by the standard deviation
-    chan_r = tf.div(tf.subtract(chan_r, mean_r), tf.sqrt(var_r))
-    chan_g = tf.div(tf.subtract(chan_g, mean_g), tf.sqrt(var_g))
-    chan_b = tf.div(tf.subtract(chan_b, mean_b), tf.sqrt(var_b))
+#     # Substract the mean and devide by the standard deviation
+#     chan_r = tf.div(tf.subtract(chan_r, mean_r), tf.sqrt(var_r))
+#     chan_g = tf.div(tf.subtract(chan_g, mean_g), tf.sqrt(var_g))
+#     chan_b = tf.div(tf.subtract(chan_b, mean_b), tf.sqrt(var_b))
 
-    # Put the channels back together and reshape image to have the right size
-    preprocessed_image_flat = tf.concat([chan_r, chan_g, chan_b], 0)
-    preprocessed_image = tf.reshape(preprocessed_image_flat, [32, 32, 3])
+#     # Put the channels back together and reshape image to have the right size
+#     preprocessed_image_flat = tf.concat([chan_r, chan_g, chan_b], 0)
+#     preprocessed_image = tf.reshape(preprocessed_image_flat, [32, 32, 3])
 
-    return preprocessed_image
+#     return preprocessed_image
 
 
 def main(_):
