@@ -46,7 +46,14 @@ def deepnn(x_image, class_count=43):
     initializer = tf.random_uniform_initializer(-0.05, 0.05)
     regularizer = tf.contrib.layers.l2_regularizer(scale=FLAGS.weight_decay)
     
-    x_image = tf.map_fn(lambda img: preprocess(img), x_image)
+    x_image = tf.map_fn(lambda img: tf.image.per_image_standardization(img), x_image)
+
+    # type(x_image)
+    # for i in x_image.length :
+    #     pickle.dump(x_image[i], open( "preprocessed.p", "a" ) )
+
+    # pickle.dump(x_image, open( "whitenedImages.p", "wb" ) )
+
 
     padded_input = tf.pad(x_image, [[0, 0],[2, 2], [2, 2], [0, 0]], "CONSTANT")
     conv1 = tf.layers.conv2d(
@@ -117,6 +124,7 @@ def deepnn(x_image, class_count=43):
         kernel_regularizer=regularizer,
         name='conv4'
     )
+
    
     logits = tf.contrib.layers.fully_connected(
             inputs=conv4,
@@ -139,19 +147,22 @@ def deepnn(x_image, class_count=43):
 #         stddev_channel = np.std(images[:, :, i]) 
 #         images[:, :, i] = (images[:, :, i]  - mean_channel) / stddev_channel 
 #     return images 
+ 
 
 def preprocess(img):
-    img_flat = tf.reshape(img, [-1])
-    chan_r, chan_g, chan_b = tf.split(img_flat, 3, 0)
-
+    img_flat = tf.reshape(img, [-1]) # Flatten image
+    chan_r, chan_g, chan_b = tf.split(img_flat, 3, 0) # Devide it into three channels
+    # Calculate mean and variance for each channel
     mean_r, var_r = tf.nn.moments(chan_r, axes=[0])
     mean_g, var_g = tf.nn.moments(chan_g, axes=[0])
     mean_b, var_b = tf.nn.moments(chan_b, axes=[0])
     
+    # Substract the mean and devide by the standard deviation
     chan_r = tf.div(tf.subtract(chan_r, mean_r), tf.sqrt(var_r))
     chan_g = tf.div(tf.subtract(chan_g, mean_g), tf.sqrt(var_g))
     chan_b = tf.div(tf.subtract(chan_b, mean_b), tf.sqrt(var_b))
 
+    # Put the channels back together and reshape image to have the right size
     preprocessed_image_flat = tf.concat([chan_r, chan_g, chan_b], 0)
     preprocessed_image = tf.reshape(preprocessed_image_flat, [32, 32, 3])
 
@@ -198,8 +209,7 @@ def main(_):
         sess.run(tf.global_variables_initializer())
         print("Training....")
         for step in range(0, FLAGS.epochs, 1):
-            print("Epoch: {}".format(step))
-
+           
             train_batch_generator = batch_generator(dataset, 'train', batch_size=FLAGS.batch_size)
 
             for (train_images, train_labels) in train_batch_generator:
@@ -220,8 +230,6 @@ def main(_):
 
         for (test_images, test_labels) in test_batch_generator:
             test_accuracy_temp = sess.run(accuracy, feed_dict={x_image: test_images, y_: test_labels})
-            print('Batch {}, accuracy : {}'.format(batch_count, test_accuracy_temp))
-
             test_accuracy += test_accuracy_temp
 
             test_summay_str = sess.run(img_summary, feed_dict={x_image: test_images})
