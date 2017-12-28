@@ -1,3 +1,7 @@
+# Changed activation function to crelu -  improved up to 95%, if the epochs was 50 it went lower,
+# but this both needs further testing ( Could run it a few times and take an average with them)
+
+
 ############################################################
 #                                                          #
 #  Code for Traffic-sign-recognition coursework            #
