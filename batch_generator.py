@@ -1,10 +1,10 @@
 import numpy as np
 
+
 def batch_generator(dataset, group, batch_size=100):
 
 	idx = 0
-	dataset = dataset[0] if group == 'train' else dataset[1]
-
+	#dataset = preprocess(dataset[0]) if group == 'train' else normalize(dataset[1])
 	dataset_size = len(dataset)
 	indices = range(dataset_size)
 	np.random.shuffle(indices)
