@@ -36,7 +36,7 @@ run_log_dir = os.path.join(FLAGS.log_dir,
                            ('log_ep_{ep}_wd_{wd}_lr_{lr}').format(ep=FLAGS.epochs, wd=FLAGS.weight_decay, lr=FLAGS.learning_rate))
 
 checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
-
+#best_model_path = os.path.join('{cwd}/logs/best'.format(cwd=os.getcwd()), 'model.ckpt')
 # limit the process memory to a third of the total gpu memory
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.75)
 
@@ -46,7 +46,7 @@ def deepnn(x_image, class_count=43):
     initializer = tf.random_uniform_initializer(-0.05, 0.05)
     regularizer = tf.contrib.layers.l2_regularizer(scale=FLAGS.weight_decay)
 
-    x_image = tf.map_fn(lambda img: tf.image.per_image_standardization(img), x_image)
+    #x_image = tf.map_fn(lambda img: tf.image.per_image_standardization(img), x_image)
 
     padded_input = tf.pad(x_image, [[0, 0],[2, 2], [2, 2], [0, 0]], "CONSTANT")
     conv1 = tf.layers.conv2d(
@@ -61,12 +61,19 @@ def deepnn(x_image, class_count=43):
         name='conv1'
     )
     conv1 = tf.nn.crelu(tf.layers.batch_normalization(conv1, name='conv1'))
-    pool1 = tf.layers.average_pooling2d(
+    pool1 = tf.layers.max_pooling2d(
         inputs=tf.pad(conv1, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
         padding='valid',
         pool_size=[3, 3],
         strides=2,
         name='pool1'
+    )
+    pool1_multi = tf.layers.max_pooling2d(
+        inputs=tf.pad(conv1, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
+        padding='valid',
+        pool_size=[3, 3],
+        strides=8,
+        name='pool1_multi'
     )
     conv2 = tf.layers.conv2d(
         inputs=tf.pad(pool1,[[0, 0], [2, 2], [2, 2], [0, 0]], "CONSTANT"),
@@ -87,6 +94,13 @@ def deepnn(x_image, class_count=43):
         strides=2,
         name='pool2'
     )
+    pool2_multi = tf.layers.max_pooling2d(
+        inputs=tf.pad(conv2, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
+        padding='valid',
+        pool_size=[3, 3],
+        strides=4,
+        name='pool2_multi'
+    )
     conv3 = tf.layers.conv2d(
         inputs=tf.pad(pool2,[[0, 0], [2, 2], [2, 2], [0, 0]], "CONSTANT"),
         filters=64,
@@ -106,6 +120,13 @@ def deepnn(x_image, class_count=43):
         strides=2,
         name='pool3'
     )
+    pool3_multi = tf.layers.max_pooling2d(
+        inputs=tf.pad(conv3, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
+        padding='valid',
+        pool_size=[3, 3],
+        strides=2,
+        name='pool3_multi'
+    )
     #pool3 = tf.nn.dropout(pool3, 0.7)
     conv4 = tf.layers.conv2d(
         inputs=pool3,
@@ -119,12 +140,12 @@ def deepnn(x_image, class_count=43):
         name='conv4'
     )
     conv4 = tf.nn.crelu(tf.layers.batch_normalization(conv4, name='conv4'))
-    pool1 = tf.contrib.layers.flatten(pool1)
-    pool2 = tf.contrib.layers.flatten(pool2)
-    pool3 = tf.contrib.layers.flatten(pool3)
+    pool1_multi = tf.contrib.layers.flatten(pool1_multi)
+    pool2_multi = tf.contrib.layers.flatten(pool2_multi)
+    pool3_multi = tf.contrib.layers.flatten(pool3_multi)
     conv4 = tf.contrib.layers.flatten(conv4)
-    conv4 = tf.concat([pool1, pool2, pool3, conv4], axis=1)
-    conv4 = tf.nn.dropout(conv4, 0.7)
+    conv4 = tf.concat([pool1_multi, pool2_multi, pool3_multi, conv4], axis=1)
+    conv4 = tf.nn.dropout(conv4, 0.6)
     logits = tf.contrib.layers.fully_connected(
             inputs=conv4,
             num_outputs=class_count,
@@ -137,7 +158,7 @@ def deepnn(x_image, class_count=43):
 mean_channel = [0,0,0]
 stddev_channel = [0,0,0]
 
-def preprocess(images):
+def whiten(images):
     print("whitening training images")
     images = np.array(images)
     for i in range(0,3):
@@ -146,7 +167,7 @@ def preprocess(images):
         images[:,0][:][:][i] = (images[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
     return images
 
-def normalize(images):
+def whiten_test(images):
     print("normalizing test images")
     images = np.array(images)
     for i in range(0,3) :
@@ -156,9 +177,9 @@ def normalize(images):
 def main(_):
     tf.reset_default_graph()
     dataset = pickle.load(open('dataset.pkl', 'rb'))
-    
-    trainData = preprocess(dataset[0])
-    testData = normalize(dataset[1])
+   
+    trainData = whiten(dataset[0])
+    testData = whiten_test(dataset[1])
 
     with tf.name_scope('inputs'):
         x = tf.placeholder(tf.float32, shape=[None, 32 * 32 * 3])
@@ -167,9 +188,10 @@ def main(_):
         global_epoch = tf.placeholder(tf.float32)
         keep_prob = tf.placeholder(tf.float32)
         
-        augment = tf.placeholder(tf.bool)
+        augment = tf.placeholder(tf.bool)        
         rotated = tf.map_fn(lambda img: tf.contrib.image.rotate(img, tf.random_uniform([],-0.26,0.26)), x_image)
         translated = tf.map_fn(lambda img: tf.contrib.image.transform(img,[1, 0, tf.random_uniform([],-2,2), 0,1, tf.random_uniform([],-2,2), 0, 0]), x_image)
+        
         x_image = tf.cond(augment,  lambda: tf.concat([x_image, rotated, translated], axis=0), lambda: tf.identity(x_image))
         y_ = tf.cond(augment, lambda: tf.concat([y_, y_], axis=0), lambda: tf.identity(y_))
 
@@ -184,7 +206,7 @@ def main(_):
         decay_steps = 10
         decay_rate = 0.95  
         global_step = tf.Variable(0, trainable=False)
-        print(global_epoch)
+        #print(global_epoch)
         decayed_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, global_epoch, decay_steps, decay_rate, staircase=False)
         train_step = tf.train.MomentumOptimizer(decayed_learning_rate, 0.9).minimize(cross_entropy)
 
@@ -237,12 +259,12 @@ def main(_):
                 patience = 1
                 train_writer.add_summary(train_summary_str, step)
                 validation_temp = validtion
-                best_saver.save(sess, 'best.ckpt')
+                best_saver.save(sess, 'logs/best.ckpt')
                 train_writer.flush()
             else :
                 patience += 1
             if (patience == 10):
-                best_saver.restore(sess, 'best.ckpt')
+                best_saver.restore(sess, 'logs/best.ckpt')
                 break
             #train_writer.add_summary(train_summary_str, step)
             #train_writer.flush()
