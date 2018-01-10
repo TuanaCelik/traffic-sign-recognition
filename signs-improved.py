@@ -177,20 +177,20 @@ def whiten_test(images):
 def preprocess(image, channels=3): 
     print('preprocessing before whitening') 
     for i in range(0,3) : 
-        mean_channel = np.mean(image[:,0][:, :, i]) 
-        stddev_channel = np.std(image[:,0][:, :, i]) 
-        image[:,0][:, :, i] = (image[:,0][:, :, i]  - mean_channel) / stddev_channel 
+        mean_c = np.mean(image[0][:, :, i]) 
+        stddev_c = np.std(image[0][:, :, i]) 
+        image[0][:, :, i] = (image[0][:, :, i]  - mean_c) / stddev_c 
     return image
 
 def main(_):
     tf.reset_default_graph()
     dataset = pickle.load(open('dataset.pkl', 'rb'))
 
-    dataset[0] = map(lambda img: preprocess(img), dataset[0])
-    trainData = whiten(dataset[0])
+    trainD = map(lambda img: preprocess(img), dataset[0])
+    trainData = whiten(trainD)
 
-    dataset[1] = map(lambda img: preprocess(img), dataset[1])
-    testData = whiten_test(dataset[1])
+    testD = map(lambda img: preprocess(img), dataset[1])
+    testData = whiten_test(testD)
 
     with tf.name_scope('inputs'):
         x = tf.placeholder(tf.float32, shape=[None, 32 * 32 * 3])
