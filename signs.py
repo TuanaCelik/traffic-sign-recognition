@@ -33,11 +33,12 @@ tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batc
 tf.app.flags.DEFINE_float('weight_decay', 1e-4, 'Weight decay factor.')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Learning rate') 
 run_log_dir = os.path.join(FLAGS.log_dir,
-                           ('log_wd_{wd}_lr_{lr}_').format(wd=FLAGS.weight_decay, lr=FLAGS.learning_rate))
+                           ('log_replica_normalizing_whitening').format(wd=FLAGS.weight_decay, lr=FLAGS.learning_rate))
 checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
 
 # limit the process memory to a third of the total gpu memory
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.75)
+
 
 
 def deepnn(x_image, class_count=43):
@@ -59,7 +60,7 @@ def deepnn(x_image, class_count=43):
         kernel_regularizer=regularizer,
         name='conv1'
     )
-    
+    #tf.summary.merge([tf.summary.image('Kernel after conv 1', conv1)])
     pool1 = tf.layers.average_pooling2d(
         inputs=tf.pad(conv1, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
         pool_size=[3, 3],
@@ -127,35 +128,45 @@ def deepnn(x_image, class_count=43):
 
     return logits
 
-
-
 mean_channel = [0,0,0]
 stddev_channel = [0,0,0]
 
-def preprocess(images):
+def whiten(data):
     print("whitening training images")
-    images = np.array(images)
+    data = np.array(data)
     for i in range(0,3):
-        mean_channel[i] = np.mean(images[:,0][:][:][i])
-        stddev_channel[i] = np.std(images[:,0][:][:][i])
-        images[:,0][:][:][i] = (images[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
-    return images
+        mean_channel[i] = np.mean(data[:,0][:][:][i])
+        stddev_channel[i] = np.std(data[:,0][:][:][i])
+        data[:,0][:][:][i] = (data[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
+    return data
 
-def normalize(images):
+def whiten_test(data):
     print("normalizing test images")
-    images = np.array(images)
+    data = np.array(data)
     for i in range(0,3) :
-        images[:,0][:][:][i] = (images[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
-    return images
+        data[:,0][:][:][i] = (data[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
+    return data
+
+def preprocess(image, channels=3): 
+    for i in range(0,3) : 
+        mean_c = np.mean(image[0][:, :, i]) 
+        stddev_c = np.std(image[0][:, :, i]) 
+        image[0][:, :, i] = (image[0][:, :, i]  - mean_c) / stddev_c 
+    return image
 
 def main(_):
     tf.reset_default_graph()
 
     dataset = pickle.load(open('dataset.pkl', 'rb'))
-    
-    trainData = dataset[0]#preprocess(dataset[0])
-    #print(mean_channel)
-    testData = dataset[1]#normalize(dataset[1])
+
+    print("Per-image normalization..")
+    #trainData = whiten(dataset[0])
+    trainD = map(lambda img: preprocess(img), dataset[0])
+    trainData = whiten(trainD)
+
+    #testData = whiten_test(dataset[1])
+    testD = map(lambda img: preprocess(img), dataset[1])
+    testData = whiten_test(testD)
 
     with tf.name_scope('inputs'):
         x = tf.placeholder(tf.float32, shape=[None, 32 * 32 * 3])
@@ -176,7 +187,7 @@ def main(_):
     accuracy_summary = tf.summary.scalar("Accuracy", accuracy)
     img_summary = tf.summary.image('Input Images', x_image)
     test_img_summary = tf.summary.image('Test Images', x_image)
-
+    
     train_summary = tf.summary.merge([loss_summary, accuracy_summary, img_summary])
 
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
@@ -190,11 +201,12 @@ def main(_):
         test_writer = tf.summary.FileWriter(run_log_dir + "_test", sess.graph)
         #initialize the variables
         sess.run(tf.global_variables_initializer())
+        f = open('replica.txt', 'w')
         print("Training....")
         for step in range(0, FLAGS.epochs, 1):
             
             train_batch_generator = batch_generator(trainData, 'train', batch_size=FLAGS.batch_size)
-            print("Epoch: {}".format(step+1))
+            print("Epoch: {}".format(step))
 
 
             for (train_images, train_labels) in train_batch_generator:
@@ -215,6 +227,8 @@ def main(_):
 
         for (test_images, test_labels) in test_batch_generator:
             test_accuracy_temp = sess.run(accuracy, feed_dict={x_image: test_images, y_: test_labels})
+            print('Batch {}, accuracy : {}'.format(batch_count, test_accuracy_temp))
+
             test_accuracy += test_accuracy_temp
 
             test_summay_str = sess.run(img_summary, feed_dict={x_image: test_images})
@@ -227,10 +241,10 @@ def main(_):
         test_accuracy = 100 * (test_accuracy / batch_count)
         print('Accuracy on test set: %0.3f%%' % test_accuracy)
         print('model saved to ' + checkpoint_path)
-
+        f.write('Accuracy on test set: %0.3f%%' % test_accuracy)
         train_writer.close()
         test_writer.close()
-       
+        f.close()
    
 if __name__ == '__main__':
     tf.app.run(main=main)

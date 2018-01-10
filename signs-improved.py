@@ -33,10 +33,10 @@ tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batc
 tf.app.flags.DEFINE_float('weight_decay', 1e-6, 'Weight decay factor.')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Learning rate') 
 run_log_dir = os.path.join(FLAGS.log_dir,
-                           ('log_ep_{ep}_wd_{wd}_lr_{lr}').format(ep=FLAGS.epochs, wd=FLAGS.weight_decay, lr=FLAGS.learning_rate))
+                           ('log_with_all_improvements').format(ep=FLAGS.epochs, wd=FLAGS.weight_decay, lr=FLAGS.learning_rate))
 
 checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
-#best_model_path = os.path.join('{cwd}/logs/best'.format(cwd=os.getcwd()), 'model.ckpt')
+
 # limit the process memory to a third of the total gpu memory
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.75)
 
@@ -145,7 +145,7 @@ def deepnn(x_image, class_count=43):
     pool3_multi = tf.contrib.layers.flatten(pool3_multi)
     conv4 = tf.contrib.layers.flatten(conv4)
     conv4 = tf.concat([pool1_multi, pool2_multi, pool3_multi, conv4], axis=1)
-    conv4 = tf.nn.dropout(conv4, 0.6)
+    conv4 = tf.nn.dropout(conv4, 0.7)
     logits = tf.contrib.layers.fully_connected(
             inputs=conv4,
             num_outputs=class_count,
@@ -158,24 +158,23 @@ def deepnn(x_image, class_count=43):
 mean_channel = [0,0,0]
 stddev_channel = [0,0,0]
 
-def whiten(images):
+def whiten(data):
     print("whitening training images")
-    images = np.array(images)
+    data = np.array(data)
     for i in range(0,3):
-        mean_channel[i] = np.mean(images[:,0][:][:][i])
-        stddev_channel[i] = np.std(images[:,0][:][:][i])
-        images[:,0][:][:][i] = (images[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
-    return images
+        mean_channel[i] = np.mean(data[:,0][:][:][i])
+        stddev_channel[i] = np.std(data[:,0][:][:][i])
+        data[:,0][:][:][i] = (data[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
+    return data
 
-def whiten_test(images):
+def whiten_test(data):
     print("normalizing test images")
-    images = np.array(images)
+    data = np.array(data)
     for i in range(0,3) :
-        images[:,0][:][:][i] = (images[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
-    return images
+        data[:,0][:][:][i] = (data[:,0][:][:][i]  - mean_channel[i]) / stddev_channel[i]
+    return data
 
 def preprocess(image, channels=3): 
-    print('preprocessing before whitening') 
     for i in range(0,3) : 
         mean_c = np.mean(image[0][:, :, i]) 
         stddev_c = np.std(image[0][:, :, i]) 
@@ -185,11 +184,12 @@ def preprocess(image, channels=3):
 def main(_):
     tf.reset_default_graph()
     dataset = pickle.load(open('dataset.pkl', 'rb'))
-
-    trainD = map(lambda img: preprocess(img), dataset[0])
+    
+    print("Per-image normalization..")
+    trainData = map(lambda img: preprocess(img), dataset[0])
     trainData = whiten(trainD)
 
-    testD = map(lambda img: preprocess(img), dataset[1])
+    testData = map(lambda img: preprocess(img), dataset[1])
     testData = whiten_test(testD)
 
     with tf.name_scope('inputs'):
@@ -217,7 +217,7 @@ def main(_):
         decay_steps = 10
         decay_rate = 0.95  
         global_step = tf.Variable(0, trainable=False)
-        #print(global_epoch)
+
         decayed_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, global_epoch, decay_steps, decay_rate, staircase=False)
         train_step = tf.train.MomentumOptimizer(decayed_learning_rate, 0.9).minimize(cross_entropy)
 
@@ -242,6 +242,7 @@ def main(_):
         test_batch_gen = batch_generator(testData, 'test', batch_size=FLAGS.batch_size)
         
         sess.run(tf.global_variables_initializer())
+        f = open('improvements.txt', 'w')
         print("Training....")
         for step in range(0, FLAGS.epochs, 1):
             
@@ -265,19 +266,21 @@ def main(_):
             validtion = test_accuracy / batch_count
 
             print("Epoch: {}".format(step+1) + " Validation Accuracy: {}".format(validtion))
-            
+            train_writer.add_summary(train_summary_str, step)
+            if step % 10 == 0:
+                train_writer.flush()
+
             if(validtion > validation_temp):
                 patience = 1
-                train_writer.add_summary(train_summary_str, step)
+                #train_writer.add_summary(train_summary_str, step)
                 validation_temp = validtion
-                best_saver.save(sess, 'logs/best.ckpt')
+                best_saver.save(sess, 'best.ckpt')
                 train_writer.flush()
             else :
                 patience += 1
             if (patience == 10):
-                best_saver.restore(sess, 'logs/best.ckpt')
+                best_saver.restore(sess, 'best.ckpt')
                 break
-            #train_writer.add_summary(train_summary_str, step)
             #train_writer.flush()
                                                                         
       
@@ -291,7 +294,7 @@ def main(_):
         for (test_images, test_labels) in test_batch_generator:
             test_accuracy_temp = sess.run(accuracy, feed_dict={x_image: test_images, y_: test_labels, augment: False})
             print('Batch {}, accuracy : {}'.format(batch_count, test_accuracy_temp))
-
+            #f.write('Batch {}, accuracy : {}'.format(batch_count, test_accuracy_temp))
             test_accuracy += test_accuracy_temp
 
             test_summay_str = sess.run(img_summary, feed_dict={x_image: test_images, augment: False})
@@ -303,10 +306,11 @@ def main(_):
 
         test_accuracy = 100 * (test_accuracy / batch_count)
         print('Accuracy on test set with improvements: %0.3f%%' % test_accuracy)
+        f.write('Accuracy on test set with improvements: %0.3f%%' % test_accuracy)
         print('model saved to ' + checkpoint_path)
         train_writer.close()
         test_writer.close()
-       
+        f.close()
    
 if __name__ == '__main__':
     tf.app.run(main=main)
