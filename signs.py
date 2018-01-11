@@ -234,7 +234,7 @@ def main(_):
         x_image= tf.reshape(x, [-1, 32, 32, 3])
         y_ = tf.placeholder(tf.float32, shape=[None, 43])
 
-    with tf.variable_scope('model'):
+    with tf.name_scope('model'):
         logits = deepnn(x_image)
 
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
