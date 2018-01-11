@@ -16,6 +16,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
+from math import sqrt
 
 import cPickle as pickle
 from batch_generator import batch_generator
@@ -250,7 +251,7 @@ def main(_):
         # tf.get_variable_scope().reuse_variables()
         kernels1 = tf.get_variable('kernel')
         grid1 = put_kernels_on_grid (kernels1)
-        kernel_summary_c1 = tf.image.summary('conv1/kernel', grid1, max_outputs=1)        
+        kernel_summary_c1 = tf.summary.image('conv1/kernel', grid1, max_outputs=1)        
 
 
     with tf.variable_scope('conv2', reuse=True):
@@ -258,7 +259,7 @@ def main(_):
         kernels2 = tf.get_variable('kernel')
         reduceK = tf.reduce_mean(kernels2,axis=2,keep_dims=True)
         grid2 = put_kernels_on_grid (reduceK)
-        kernel_summary_c2 = tf.image.summary('conv2/kernel', grid2, max_outputs=1)     
+        kernel_summary_c2 = tf.summary.image('conv2/kernel', grid2, max_outputs=1)     
 
     loss_summary = tf.summary.scalar("Loss", cross_entropy)
     accuracy_summary = tf.summary.scalar("Error", accuracy)
