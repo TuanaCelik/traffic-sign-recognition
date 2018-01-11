@@ -244,17 +244,17 @@ def main(_):
         
         train_step = tf.train.MomentumOptimizer(FLAGS.learning_rate, 0.9).minimize(cross_entropy)
 
-    with tf.variable_scope('conv1'):
+    with tf.variable_scope('conv1', reuse=True):
         # vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='conv1')
         # print(vars)
-        tf.get_variable_scope().reuse_variables()
+        # tf.get_variable_scope().reuse_variables()
         kernels1 = tf.get_variable('kernel')
         grid1 = put_kernels_on_grid (kernels1)
         kernel_summary_c1 = tf.image.summary('conv1/kernel', grid1, max_outputs=1)        
 
 
-    with tf.variable_scope('conv2'):
-        tf.get_variable_scope().reuse_variables()
+    with tf.variable_scope('conv2', reuse=True):
+        # tf.get_variable_scope().reuse_variables()
         kernels2 = tf.get_variable('kernel')
         reduceK = tf.reduce_mean(kernels2,axis=2,keep_dims=True)
         grid2 = put_kernels_on_grid (reduceK)
