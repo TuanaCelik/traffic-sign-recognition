@@ -33,7 +33,7 @@ tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batc
 tf.app.flags.DEFINE_float('weight_decay', 1e-4, 'Weight decay factor.')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Learning rate') 
 run_log_dir = os.path.join(FLAGS.log_dir,
-                           ('log_replica_normalizing_whitening').format(wd=FLAGS.weight_decay, lr=FLAGS.learning_rate))
+                           ('log_replica_no_normalizing').format(wd=FLAGS.weight_decay, lr=FLAGS.learning_rate))
 checkpoint_path = os.path.join(run_log_dir, 'model.ckpt')
 
 # limit the process memory to a third of the total gpu memory
@@ -60,7 +60,7 @@ def deepnn(x_image, class_count=43):
         kernel_regularizer=regularizer,
         name='conv1'
     )
-    #tf.summary.merge([tf.summary.image('Kernel after conv 1', conv1)])
+    #conv1 = tf.layers.batch_normalization(conv1, name='conv1')
     pool1 = tf.layers.average_pooling2d(
         inputs=tf.pad(conv1, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
         pool_size=[3, 3],
@@ -79,7 +79,7 @@ def deepnn(x_image, class_count=43):
         kernel_regularizer=regularizer,
         name='conv2'
     )
-
+    #conv2 = tf.layers.batch_normalization(conv2, name='conv2')
     pool2 = tf.layers.average_pooling2d(
         inputs=tf.pad(conv2, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
         pool_size=[3, 3],
@@ -99,7 +99,7 @@ def deepnn(x_image, class_count=43):
         name='conv3'
     )
 
-
+    #conv3 = tf.layers.batch_normalization(conv3, name='conv3')
     pool3 = tf.layers.max_pooling2d(
         inputs=tf.pad(conv3, [[0, 0], [0, 1], [0, 1], [0, 0]], "CONSTANT"),
         pool_size=[3, 3],
@@ -117,6 +117,7 @@ def deepnn(x_image, class_count=43):
         kernel_regularizer=regularizer,
         name='conv4'
     )
+    #conv4 = tf.layers.batch_normalization(conv4, name='conv4')
     conv4 = tf.contrib.layers.flatten(conv4)
     logits = tf.contrib.layers.fully_connected(
             inputs=conv4,
@@ -179,6 +180,8 @@ def main(_):
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
 
         correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(y_, 1))
+        wrong_prediction = tf.boolean_mask(x_image, tf.logical_not(correct_prediction))
+        right_prediction = tf.boolean_mask(x_image, correct_prediction)
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
         
         train_step = tf.train.MomentumOptimizer(FLAGS.learning_rate, 0.9).minimize(cross_entropy)
@@ -187,8 +190,9 @@ def main(_):
     accuracy_summary = tf.summary.scalar("Accuracy", accuracy)
     img_summary = tf.summary.image('Input Images', x_image)
     test_img_summary = tf.summary.image('Test Images', x_image)
-    
-    train_summary = tf.summary.merge([loss_summary, accuracy_summary, img_summary])
+    wrong_prediction_summary = tf.summary.image('Miss Classified Images', wrong_prediction)
+    right_prediction_summary = tf.summary.image('Correctly Classified Images', right_prediction)
+    train_summary = tf.summary.merge([loss_summary, accuracy_summary, img_summary, wrong_prediction_summary, right_prediction_summary])
 
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
 
